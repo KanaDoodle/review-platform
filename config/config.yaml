@@ -1,0 +1,15 @@
+app:
+  name: review-platform
+  port: 8080
+
+mysql:
+  dsn: "root:root@tcp(127.0.0.1:3306)/review_platform?charset=utf8mb4&parseTime=True&loc=Local"
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+jwt:
+  secret: "replace-with-your-secret"
+  expire_hours: 72
