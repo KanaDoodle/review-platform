@@ -27,11 +27,19 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	shopSvc := service.NewShopService(shopRepo)
 	shopHandler := api.NewShopHandler(shopSvc)
 
+	reviewRepo := repository.NewReviewRepository(app.DB)
+	reviewSvc := service.NewReviewService(reviewRepo, shopRepo)
+	reviewHandler := api.NewReviewHandler(reviewSvc)
+
+
 	v1 := r.Group("/api/v1")
 	{
 		v1.GET("/categories", categoryHandler.List)
 		v1.GET("/shops", shopHandler.List)
 		v1.GET("/shops/:id", shopHandler.GetByID)
+		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
+
+		v1.POST("/reviews", reviewHandler.Create)
 	}
 
 	cleanup := func() {}
