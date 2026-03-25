@@ -18,7 +18,7 @@ import (
 const (
 	shopCacheTTL     = 10 * time.Minute
 	shopNullCacheTTL = 2 * time.Minute
-	shopGeoKey = "geo:shop"
+	shopGeoAllKey = "geo:shop:All"
 )
 
 type ShopService struct {
@@ -95,23 +95,55 @@ func (s *ShopService) LoadShopGeoData() error {
 		return nil
 	}
 
-	locations := make([]*redis.GeoLocation, 0, len(shops))
+	allLocations := make([]*redis.GeoLocation, 0, len(shops))
+	categoryLocations := make(map[int64][]*redis.GeoLocation)
+
 	for _, shop := range shops {
-		locations = append(locations, &redis.GeoLocation{
+		loc := &redis.GeoLocation{
 			Name:      fmt.Sprintf("%d", shop.ID),
 			Longitude: shop.Lng,
 			Latitude:  shop.Lat,
-		})
+		}
+
+		allLocations = append(allLocations, loc)
+		categoryLocations[shop.CategoryID] = append(categoryLocations[shop.CategoryID], loc)
 	}
 
-	return s.rdb.GeoAdd(ctx, shopGeoKey, locations...).Err()
+	// 先清理旧 GEO 数据，避免重复加载
+	keys := []string{shopGeoAllKey}
+	for categoryID := range categoryLocations {
+		keys = append(keys, shopGeoCategoryKey(categoryID))
+	}
+	if len(keys) > 0 {
+		_ = s.rdb.Del(ctx, keys...).Err()
+	}
+
+	if err := s.rdb.GeoAdd(ctx, shopGeoAllKey, allLocations...).Err(); err != nil {
+		return err
+	}
+
+	for categoryID, locations := range categoryLocations {
+		if len(locations) == 0 {
+			continue
+		}
+		if err := s.rdb.GeoAdd(ctx, shopGeoCategoryKey(categoryID), locations...).Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (s *ShopService) NearbyShops(lng, lat float64, radius float64, page, pageSize int) ([]NearbyShop, int, error) {
+func (s *ShopService) NearbyShops(categoryID int64, lng, lat float64, radius float64, page, pageSize int) ([]NearbyShop, int, error) {
 	ctx := context.Background()
 
+	geoKey := shopGeoAllKey
+	if categoryID > 0 {
+		geoKey = shopGeoCategoryKey(categoryID)
+	}
+
 	end := page * pageSize
-	results, err := s.rdb.GeoSearchLocation(ctx, shopGeoKey, &redis.GeoSearchLocationQuery{
+	results, err := s.rdb.GeoSearchLocation(ctx, geoKey, &redis.GeoSearchLocationQuery{
 		GeoSearchQuery: redis.GeoSearchQuery{
 			Longitude:  lng,
 			Latitude:   lat,
@@ -181,4 +213,8 @@ func shopCacheKey(id int64) string {
 
 func shopNullCacheKey(id int64) string {
 	return fmt.Sprintf("cache:shop:null:%d", id)
+}
+
+func shopGeoCategoryKey(categoryID int64) string {
+	return fmt.Sprintf("geo:shop:category:%d", categoryID)
 }

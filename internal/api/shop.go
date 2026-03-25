@@ -84,11 +84,22 @@ func (h *ShopHandler) GetByID(c *gin.Context) {
 }
 
 func (h *ShopHandler) Nearby(c *gin.Context) {
+	categoryIDStr := c.Query("category_id")
 	lngStr := c.Query("lng")
 	latStr := c.Query("lat")
 	radiusStr := c.DefaultQuery("radius", "5000")
 	pageStr := c.DefaultQuery("page", "1")
 	pageSizeStr := c.DefaultQuery("page_size", "10")
+
+	var categoryID int64
+	if categoryIDStr != "" {
+		id, err := strconv.ParseInt(categoryIDStr, 10, 64)
+		if err != nil || id < 0 {
+			response.Error(c, 40001, "invalid category_id")
+			return
+		}
+		categoryID = id
+	}
 
 	lng, err := strconv.ParseFloat(lngStr, 64)
 	if err != nil {
@@ -124,7 +135,7 @@ func (h *ShopHandler) Nearby(c *gin.Context) {
 		pageSize = 50
 	}
 
-	items, total, err := h.svc.NearbyShops(lng, lat, radius, page, pageSize)
+	items, total, err := h.svc.NearbyShops(categoryID, lng, lat, radius, page, pageSize)
 	if err != nil {
 		response.Error(c, 50001, "failed to query nearby shops")
 		return
