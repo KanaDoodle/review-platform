@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"review-platform/internal/model"
 
 	"gorm.io/gorm"
@@ -27,6 +28,8 @@ func (r *ShopRepository) List(categoryID int64) ([]model.Shop, error) {
 }
 
 func (r *ShopRepository) GetByID(id int64) (*model.Shop, error) {
+	fmt.Println("query shop from mysql, id =", id)
+
 	var shop model.Shop
 	err := r.db.First(&shop, id).Error
 	if err != nil {

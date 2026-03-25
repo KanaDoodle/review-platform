@@ -20,12 +20,12 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		})
 	})
 
-	categoryRepo := repository.NewShopCategoryRepository(app.DB)
+	categoryRepo := repository.NewShopCategoryRepository(app.DB)	
 	categorySvc := service.NewShopCategoryService(categoryRepo)
 	categoryHandler := api.NewShopCategoryHandler(categorySvc)
 
 	shopRepo := repository.NewShopRepository(app.DB)
-	shopSvc := service.NewShopService(shopRepo)
+	shopSvc := service.NewShopService(shopRepo, app.RDB)
 	shopHandler := api.NewShopHandler(shopSvc)
 
 	reviewRepo := repository.NewReviewRepository(app.DB)
