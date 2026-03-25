@@ -51,3 +51,15 @@ func (r *ShopRepository) GetByID(id int64) (*model.Shop, error) {
 	}
 	return &shop, nil
 }
+
+func (r *ShopRepository) ListByIDs(ids []int64) ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.Where("id IN ?", ids).Find(&shops).Error
+	return shops, err
+}
+
+func (r *ShopRepository) ListAll() ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.Order("id ASC").Find(&shops).Error
+	return shops, err
+}

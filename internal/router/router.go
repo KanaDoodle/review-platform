@@ -20,12 +20,15 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		})
 	})
 
-	categoryRepo := repository.NewShopCategoryRepository(app.DB)	
+	categoryRepo := repository.NewShopCategoryRepository(app.DB)
 	categorySvc := service.NewShopCategoryService(categoryRepo)
 	categoryHandler := api.NewShopCategoryHandler(categorySvc)
 
 	shopRepo := repository.NewShopRepository(app.DB)
 	shopSvc := service.NewShopService(shopRepo, app.RDB)
+	if err := shopSvc.LoadShopGeoData(); err != nil {
+		return nil, nil, err
+	}
 	shopHandler := api.NewShopHandler(shopSvc)
 
 	reviewRepo := repository.NewReviewRepository(app.DB)
@@ -48,6 +51,7 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 
 		v1.GET("/categories", categoryHandler.List)
 		v1.GET("/shops", shopHandler.List)
+		v1.GET("/shops/nearby", shopHandler.Nearby)
 		v1.GET("/shops/:id", shopHandler.GetByID)
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
 

@@ -82,3 +82,74 @@ func (h *ShopHandler) GetByID(c *gin.Context) {
 
 	response.Success(c, shop)
 }
+
+func (h *ShopHandler) Nearby(c *gin.Context) {
+	lngStr := c.Query("lng")
+	latStr := c.Query("lat")
+	radiusStr := c.DefaultQuery("radius", "5000")
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "10")
+
+	lng, err := strconv.ParseFloat(lngStr, 64)
+	if err != nil {
+		response.Error(c, 40001, "invalid lng")
+		return
+	}
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		response.Error(c, 40001, "invalid lat")
+		return
+	}
+
+	radius, err := strconv.ParseFloat(radiusStr, 64)
+	if err != nil || radius <= 0 {
+		response.Error(c, 40001, "invalid radius")
+		return
+	}
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		response.Error(c, 40001, "invalid page")
+		return
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize <= 0 {
+		response.Error(c, 40001, "invalid page_size")
+		return
+	}
+
+	if pageSize > 50 {
+		pageSize = 50
+	}
+
+	items, total, err := h.svc.NearbyShops(lng, lat, radius, page, pageSize)
+	if err != nil {
+		response.Error(c, 50001, "failed to query nearby shops")
+		return
+	}
+
+	respItems := make([]NearbyShopItem, 0, len(items))
+	for _, item := range items {
+		respItems = append(respItems, NearbyShopItem{
+			ID:          item.Shop.ID,
+			Name:        item.Shop.Name,
+			CategoryID:  item.Shop.CategoryID,
+			Address:     item.Shop.Address,
+			Lng:         item.Shop.Lng,
+			Lat:         item.Shop.Lat,
+			Score:       item.Shop.Score,
+			AvgPrice:    item.Shop.AvgPrice,
+			Description: item.Shop.Description,
+			Distance:    item.Distance,
+		})
+	}
+
+	response.Success(c, response.PageData{
+		List:     respItems,
+		Total:    int64(total),
+		Page:     page,
+		PageSize: pageSize,
+	})
+}

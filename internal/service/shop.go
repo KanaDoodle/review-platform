@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"strconv"
 
 	"review-platform/internal/model"
 	"review-platform/internal/repository"
@@ -17,11 +18,17 @@ import (
 const (
 	shopCacheTTL     = 10 * time.Minute
 	shopNullCacheTTL = 2 * time.Minute
+	shopGeoKey = "geo:shop"
 )
 
 type ShopService struct {
 	repo *repository.ShopRepository
 	rdb  *redis.Client
+}
+
+type NearbyShop struct {
+	Shop     model.Shop
+	Distance float64
 }
 
 func NewShopService(repo *repository.ShopRepository, rdb *redis.Client) *ShopService {
@@ -74,6 +81,98 @@ func (s *ShopService) GetShopByID(id int64) (*model.Shop, error) {
 	}
 
 	return shop, nil
+}
+
+func (s *ShopService) LoadShopGeoData() error {
+	ctx := context.Background()
+
+	shops, err := s.repo.ListAll()
+	if err != nil {
+		return err
+	}
+
+	if len(shops) == 0 {
+		return nil
+	}
+
+	locations := make([]*redis.GeoLocation, 0, len(shops))
+	for _, shop := range shops {
+		locations = append(locations, &redis.GeoLocation{
+			Name:      fmt.Sprintf("%d", shop.ID),
+			Longitude: shop.Lng,
+			Latitude:  shop.Lat,
+		})
+	}
+
+	return s.rdb.GeoAdd(ctx, shopGeoKey, locations...).Err()
+}
+
+func (s *ShopService) NearbyShops(lng, lat float64, radius float64, page, pageSize int) ([]NearbyShop, int, error) {
+	ctx := context.Background()
+
+	end := page * pageSize
+	results, err := s.rdb.GeoSearchLocation(ctx, shopGeoKey, &redis.GeoSearchLocationQuery{
+		GeoSearchQuery: redis.GeoSearchQuery{
+			Longitude:  lng,
+			Latitude:   lat,
+			Radius:     radius,
+			RadiusUnit: "m",
+			Sort:       "ASC",
+			Count:      end,
+		},
+		WithDist: true,
+	}).Result()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total := len(results)
+	start := (page - 1) * pageSize
+	if start >= total {
+		return []NearbyShop{}, total, nil
+	}
+
+	pageResults := results[start:]
+	if len(pageResults) > pageSize {
+		pageResults = pageResults[:pageSize]
+	}
+
+	ids := make([]int64, 0, len(pageResults))
+	distanceMap := make(map[int64]float64, len(pageResults))
+	orderMap := make(map[int64]int, len(pageResults))
+
+	for i, item := range pageResults {
+		id, err := strconv.ParseInt(item.Name, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+		distanceMap[id] = item.Dist
+		orderMap[id] = i
+	}
+
+	if len(ids) == 0 {
+		return []NearbyShop{}, total, nil
+	}
+
+	shops, err := s.repo.ListByIDs(ids)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ordered := make([]NearbyShop, len(ids))
+	for _, shop := range shops {
+		idx, ok := orderMap[shop.ID]
+		if !ok {
+			continue
+		}
+		ordered[idx] = NearbyShop{
+			Shop:     shop,
+			Distance: distanceMap[shop.ID],
+		}
+	}
+
+	return ordered, total, nil
 }
 
 func shopCacheKey(id int64) string {
