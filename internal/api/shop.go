@@ -19,6 +19,8 @@ func NewShopHandler(svc *service.ShopService) *ShopHandler {
 
 func (h *ShopHandler) List(c *gin.Context) {
 	categoryIDStr := c.Query("category_id")
+	pageStr := c.DefaultQuery("page", "1")
+	pageSizeStr := c.DefaultQuery("page_size", "10")
 
 	var categoryID int64
 	if categoryIDStr != "" {
@@ -30,13 +32,34 @@ func (h *ShopHandler) List(c *gin.Context) {
 		categoryID = id
 	}
 
-	shops, err := h.svc.ListShops(categoryID)
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		response.Error(c, 40001, "invalid page")
+		return
+	}
+
+	pageSize, err := strconv.Atoi(pageSizeStr)
+	if err != nil || pageSize <= 0 {
+		response.Error(c, 40001, "invalid page_size")
+		return
+	}
+
+	if pageSize > 50 {
+		pageSize = 50
+	}
+
+	shops, total, err := h.svc.ListShops(categoryID, page, pageSize)
 	if err != nil {
 		response.Error(c, 50001, "failed to list shops")
 		return
 	}
 
-	response.Success(c, shops)
+	response.Success(c, response.PageData{
+		List:     shops,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
 }
 
 func (h *ShopHandler) GetByID(c *gin.Context) {

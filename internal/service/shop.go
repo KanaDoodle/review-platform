@@ -31,8 +31,8 @@ func NewShopService(repo *repository.ShopRepository, rdb *redis.Client) *ShopSer
 	}
 }
 
-func (s *ShopService) ListShops(categoryID int64) ([]model.Shop, error) {
-	return s.repo.List(categoryID)
+func (s *ShopService) ListShops(categoryID int64, page, pageSize int) ([]model.Shop, int64, error) {
+	return s.repo.List(categoryID, page, pageSize)
 }
 
 func (s *ShopService) GetShopByID(id int64) (*model.Shop, error) {
