@@ -1,8 +1,15 @@
 package api
 
 type CreateReviewRequest struct {
-	UserID  int64  `json:"user_id"`
 	ShopID  int64  `json:"shop_id"`
 	Content string `json:"content"`
 }
 
+type SendCodeRequest struct {
+	Phone string `json:"phone"`
+}
+
+type LoginRequest struct {
+	Phone string `json:"phone"`
+	Code  string `json:"code"`
+}

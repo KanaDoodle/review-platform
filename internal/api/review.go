@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"review-platform/internal/middleware"
 	"review-platform/internal/service"
 	"review-platform/pkg/response"
 	"strconv"
@@ -45,7 +46,19 @@ func (h *ReviewHandler) Create(c *gin.Context) {
 		return
 	}
 
-	err := h.svc.Create(req.UserID, req.ShopID, req.Content)
+	userIDVal, ok := c.Get(middleware.CurrentUserIDKey)
+	if !ok {
+		response.Error(c, 40101, "unauthorized")
+		return
+	}
+
+	userID, ok := userIDVal.(int64)
+	if !ok {
+		response.Error(c, 40101, "invalid user context")
+		return
+	}
+
+	err := h.svc.Create(userID, req.ShopID, req.Content)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidReviewData):
@@ -60,5 +73,7 @@ func (h *ReviewHandler) Create(c *gin.Context) {
 		}
 	}
 
-	response.Success(c, gin.H{"message": "review created successfully"})
+	response.Success(c, gin.H{
+		"message": "review created",
+	})
 }

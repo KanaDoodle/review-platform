@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"review-platform/internal/api"
+	"review-platform/internal/middleware"
 	"review-platform/internal/repository"
 	"review-platform/internal/service"
 
@@ -31,15 +32,30 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	reviewSvc := service.NewReviewService(reviewRepo, shopRepo)
 	reviewHandler := api.NewReviewHandler(reviewSvc)
 
+	userRepo := repository.NewUserRepository(app.DB)
+	authSvc := service.NewAuthService(
+		userRepo,
+		app.RDB,
+		app.Config.JWT.Secret,
+		app.Config.JWT.ExpireHours,
+	)
+	authHandler := api.NewAuthHandler(authSvc)
 
 	v1 := r.Group("/api/v1")
 	{
+		v1.POST("/auth/send-code", authHandler.SendCode)
+		v1.POST("/auth/login", authHandler.Login)
+
 		v1.GET("/categories", categoryHandler.List)
 		v1.GET("/shops", shopHandler.List)
 		v1.GET("/shops/:id", shopHandler.GetByID)
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
 
-		v1.POST("/reviews", reviewHandler.Create)
+		authGroup := v1.Group("")
+		authGroup.Use(middleware.Auth(app.Config))
+		{
+			authGroup.POST("/reviews", reviewHandler.Create)
+		}
 	}
 
 	cleanup := func() {}
