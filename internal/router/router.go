@@ -41,7 +41,9 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	if err := voucherSvc.LoadVoucherStockToRedis(); err != nil {
 	return nil, nil, err
 	}
+	voucherSvc.StartVoucherOrderConsumer()
 	voucherHandler := api.NewVoucherHandler(voucherSvc)
+	
 
 	userRepo := repository.NewUserRepository(app.DB)
 	authSvc := service.NewAuthService(

@@ -58,6 +58,6 @@ func (h *VoucherHandler) Seckill(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"message": "seckill success",
+		"message": "seckill request accepted.",
 	})
 }

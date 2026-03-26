@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"strconv"
 
 	"review-platform/internal/model"
 	"review-platform/internal/repository"
@@ -12,6 +13,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+const voucherOrderStreamKey = "stream.orders"
 
 var seckillLuaScript = redis.NewScript(`
 local stockKey = KEYS[1]
@@ -105,7 +108,12 @@ func (s *VoucherService) Seckill(userID, voucherID int64) error {
 		return ErrDuplicateVoucherOrder
 	}
 
-	return s.createVoucherOrder(userID, voucherID)
+	// Redis 预扣成功后，异步投递订单消息
+	if err := s.enqueueVoucherOrder(ctx, userID, voucherID); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *VoucherService) createVoucherOrder(userID, voucherID int64) error {
@@ -148,4 +156,92 @@ func voucherStockKey(voucherID int64) string {
 
 func voucherOrderKey(voucherID int64) string {
 	return fmt.Sprintf("seckill:order:%d", voucherID)
+}
+
+func (s *VoucherService) enqueueVoucherOrder(ctx context.Context, userID, voucherID int64) error {
+	_, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: voucherOrderStreamKey,
+		Values: map[string]interface{}{
+			"user_id":    userID,
+			"voucher_id": voucherID,
+		},
+	}).Result()
+	return err
+}
+
+func (s *VoucherService) StartVoucherOrderConsumer() {
+	go func() {
+		ctx := context.Background()
+		lastID := "0"
+
+		for {
+			streams, err := s.rdb.XRead(ctx, &redis.XReadArgs{
+				Streams: []string{voucherOrderStreamKey, lastID},
+				Count:   1,
+				Block:   2 * time.Second,
+			}).Result()
+			if err != nil {
+				if err == redis.Nil {
+					continue
+				}
+				time.Sleep(1 * time.Second)
+				continue
+			}
+
+			for _, stream := range streams {
+				for _, msg := range stream.Messages {
+					userID, voucherID, parseErr := parseVoucherOrderMessage(msg.Values)
+					if parseErr != nil {
+						lastID = msg.ID
+						continue
+					}
+
+					if err := s.createVoucherOrder(userID, voucherID); err != nil {
+						// 先简单跳过，后续可加失败重试/死信队列
+					}
+
+					lastID = msg.ID
+				}
+			}
+		}
+	}()
+}
+
+func parseVoucherOrderMessage(values map[string]interface{}) (int64, int64, error) {
+	userIDRaw, ok := values["user_id"]
+	if !ok {
+		return 0, 0, errors.New("missing user_id")
+	}
+
+	voucherIDRaw, ok := values["voucher_id"]
+	if !ok {
+		return 0, 0, errors.New("missing voucher_id")
+	}
+
+	userID, err := parseStreamInt64(userIDRaw)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	voucherID, err := parseStreamInt64(voucherIDRaw)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return userID, voucherID, nil
+}
+
+func parseStreamInt64(v interface{}) (int64, error) {
+	switch val := v.(type) {
+	case string:
+		return strconv.ParseInt(val, 10, 64)
+	case []byte:
+		return strconv.ParseInt(string(val), 10, 64)
+	case int64:
+		return val, nil
+	case int:
+		return int64(val), nil
+	default:
+		return 0, errors.New("invalid int64 value")
+	}
 }
