@@ -18,3 +18,7 @@ INSERT INTO review (user_id, shop_id, content, like_count) VALUES
 (1, 1, '味道不错，牛肉很嫩。', 3),
 (2, 1, '排队有点久，但值得。', 5),
 (1, 2, '咖啡香气很好，出杯快。', 2);
+
+INSERT INTO voucher (shop_id, stock, begin_time, end_time) VALUES
+(1, 5, NOW() - INTERVAL 1 HOUR, NOW() + INTERVAL 1 DAY),
+(2, 3, NOW() - INTERVAL 1 HOUR, NOW() + INTERVAL 1 DAY);

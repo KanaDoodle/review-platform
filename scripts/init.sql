@@ -44,3 +44,25 @@ CREATE TABLE review (
     INDEX idx_shop_id (shop_id),
     INDEX idx_user_id (user_id)
 );
+
+CREATE TABLE voucher (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    shop_id BIGINT NOT NULL,
+    stock INT NOT NULL,
+    begin_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_shop_id (shop_id)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE voucher_order (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    voucher_id BIGINT NOT NULL,
+    status TINYINT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_voucher (user_id, voucher_id),
+    INDEX idx_voucher_id (voucher_id)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
