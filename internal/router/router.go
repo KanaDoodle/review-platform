@@ -39,11 +39,13 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	voucherOrderRepo := repository.NewVoucherOrderRepository(app.DB)
 	voucherSvc := service.NewVoucherService(app.DB, app.RDB, voucherRepo, voucherOrderRepo)
 	if err := voucherSvc.LoadVoucherStockToRedis(); err != nil {
-	return nil, nil, err
+		return nil, nil, err
+	}
+	if err := voucherSvc.InitVoucherOrderStream(); err != nil {
+		return nil, nil, err
 	}
 	voucherSvc.StartVoucherOrderConsumer()
 	voucherHandler := api.NewVoucherHandler(voucherSvc)
-	
 
 	userRepo := repository.NewUserRepository(app.DB)
 	authSvc := service.NewAuthService(
@@ -58,14 +60,12 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	{
 		v1.POST("/auth/send-code", authHandler.SendCode)
 		v1.POST("/auth/login", authHandler.Login)
-		
 
 		v1.GET("/categories", categoryHandler.List)
 		v1.GET("/shops", shopHandler.List)
 		v1.GET("/shops/nearby", shopHandler.Nearby)
 		v1.GET("/shops/:id", shopHandler.GetByID)
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
-		
 
 		authGroup := v1.Group("")
 		authGroup.Use(middleware.Auth(app.Config))

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 	"strconv"
+	"strings"
 
 	"review-platform/internal/model"
 	"review-platform/internal/repository"
@@ -14,8 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
-const voucherOrderStreamKey = "stream.orders"
-
+const (
+	voucherOrderStreamKey = "stream.orders"
+	voucherOrderGroupName = "g1"
+	voucherOrderConsumer  = "c1"
+)
 var seckillLuaScript = redis.NewScript(`
 local stockKey = KEYS[1]
 local orderKey = KEYS[2]
@@ -172,16 +176,18 @@ func (s *VoucherService) enqueueVoucherOrder(ctx context.Context, userID, vouche
 func (s *VoucherService) StartVoucherOrderConsumer() {
 	go func() {
 		ctx := context.Background()
-		lastID := "0"
 
 		for {
-			streams, err := s.rdb.XRead(ctx, &redis.XReadArgs{
-				Streams: []string{voucherOrderStreamKey, lastID},
-				Count:   1,
-				Block:   2 * time.Second,
+			streams, err := s.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group:    voucherOrderGroupName,
+				Consumer: voucherOrderConsumer,
+				Streams:  []string{voucherOrderStreamKey, ">"},
+				Count:    1,
+				Block:    2 * time.Second,
 			}).Result()
 			if err != nil {
 				if err == redis.Nil {
+					s.handlePendingList(ctx)
 					continue
 				}
 				time.Sleep(1 * time.Second)
@@ -190,17 +196,9 @@ func (s *VoucherService) StartVoucherOrderConsumer() {
 
 			for _, stream := range streams {
 				for _, msg := range stream.Messages {
-					userID, voucherID, parseErr := parseVoucherOrderMessage(msg.Values)
-					if parseErr != nil {
-						lastID = msg.ID
+					if err := s.handleVoucherOrderMessage(ctx, msg); err != nil {
 						continue
 					}
-
-					if err := s.createVoucherOrder(userID, voucherID); err != nil {
-						// 先简单跳过，后续可加失败重试/死信队列
-					}
-
-					lastID = msg.ID
 				}
 			}
 		}
@@ -243,5 +241,60 @@ func parseStreamInt64(v interface{}) (int64, error) {
 		return int64(val), nil
 	default:
 		return 0, errors.New("invalid int64 value")
+	}
+}
+
+func (s *VoucherService) InitVoucherOrderStream() error {
+	ctx := context.Background()
+
+	err := s.rdb.XGroupCreateMkStream(ctx, voucherOrderStreamKey, voucherOrderGroupName, "0").Err()
+	if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		return err
+	}
+
+	return nil
+}
+
+func (s *VoucherService) handleVoucherOrderMessage(ctx context.Context, msg redis.XMessage) error {
+	fmt.Println("Processing message:",msg.ID, msg.Values) //TempLog
+	
+	userID, voucherID, err := parseVoucherOrderMessage(msg.Values)
+	if err != nil {
+		return err
+	}
+
+	if err := s.createVoucherOrder(userID, voucherID); err != nil {
+		return err
+	}
+
+	fmt.Println("Order created successfully for user:", userID, "voucher:", voucherID) //TempLog
+	return s.rdb.XAck(ctx, voucherOrderStreamKey, voucherOrderGroupName, msg.ID).Err()
+}
+
+func (s *VoucherService) handlePendingList(ctx context.Context) {
+	for {
+		streams, err := s.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    voucherOrderGroupName,
+			Consumer: voucherOrderConsumer,
+			Streams:  []string{voucherOrderStreamKey, "0"},
+			Count:    1,
+			Block:    1 * time.Second,
+		}).Result()
+		if err != nil {
+			return
+		}
+
+		if len(streams) == 0 || len(streams[0].Messages) == 0 {
+			return
+		}
+
+		for _, stream := range streams {
+			for _, msg := range stream.Messages {
+				if err := s.handleVoucherOrderMessage(ctx, msg); err != nil {
+					time.Sleep(500 * time.Millisecond)
+					continue
+				}
+			}
+		}
 	}
 }
