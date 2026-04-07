@@ -45,7 +45,8 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		return nil, nil, err
 	}
 	voucherSvc.StartVoucherOrderConsumer()
-	voucherHandler := api.NewVoucherHandler(voucherSvc)
+	rateLimiter := service.NewRateLimiter(app.RDB)
+	voucherHandler := api.NewVoucherHandler(voucherSvc, rateLimiter)
 
 	userRepo := repository.NewUserRepository(app.DB)
 	authSvc := service.NewAuthService(
