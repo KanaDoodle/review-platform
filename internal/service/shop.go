@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 	"strconv"
+	"time"
 
 	"review-platform/internal/model"
 	"review-platform/internal/repository"
@@ -18,7 +18,7 @@ import (
 const (
 	shopCacheTTL     = 10 * time.Minute
 	shopNullCacheTTL = 2 * time.Minute
-	shopGeoAllKey = "geo:shop:All"
+	shopGeoAllKey    = "geo:shop:All"
 )
 
 type ShopService struct {
@@ -217,4 +217,31 @@ func shopNullCacheKey(id int64) string {
 
 func shopGeoCategoryKey(categoryID int64) string {
 	return fmt.Sprintf("geo:shop:category:%d", categoryID)
+}
+
+func (s *ShopService) UpdateShop(id int64, name, address string) error {
+	ctx := context.Background()
+
+	cacheKey := fmt.Sprintf("cache:shop:%d", id)
+
+	// 第一次删除缓存
+	_ = s.rdb.Del(ctx, cacheKey).Err()
+
+	// 更新数据库
+	err := s.repo.UpdateByID(id, map[string]interface{}{
+		"name":    name,
+		"address": address,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// 延迟双删
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_ = s.rdb.Del(context.Background(), cacheKey).Err()
+	}()
+
+	return nil
 }

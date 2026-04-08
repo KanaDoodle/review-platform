@@ -67,6 +67,7 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		v1.GET("/shops/nearby", shopHandler.Nearby)
 		v1.GET("/shops/:id", shopHandler.GetByID)
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
+		v1.POST("/shops/update", shopHandler.Update)
 
 		authGroup := v1.Group("")
 		authGroup.Use(middleware.Auth(app.Config))

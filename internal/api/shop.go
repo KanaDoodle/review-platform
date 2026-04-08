@@ -164,3 +164,31 @@ func (h *ShopHandler) Nearby(c *gin.Context) {
 		PageSize: pageSize,
 	})
 }
+
+func (h *ShopHandler) Update(c *gin.Context) {
+	var req struct {
+		ID      int64  `json:"id"`
+		Name    string `json:"name"`
+		Address string `json:"address"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, 40001, "invalid params")
+		return
+	}
+
+	if req.ID <= 0 {
+		response.Error(c, 40001, "invalid id")
+		return
+	}
+
+	err := h.svc.UpdateShop(req.ID, req.Name, req.Address)
+	if err != nil {
+		response.Error(c, 50001, "update failed")
+		return
+	}
+
+	response.Success(c, gin.H{
+		"message": "update success",
+	})
+}

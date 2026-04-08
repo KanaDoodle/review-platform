@@ -63,3 +63,9 @@ func (r *ShopRepository) ListAll() ([]model.Shop, error) {
 	err := r.db.Order("id ASC").Find(&shops).Error
 	return shops, err
 }
+
+func (r *ShopRepository) UpdateByID(id int64, updates map[string]interface{}) error {
+	return r.db.Model(&model.Shop{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
