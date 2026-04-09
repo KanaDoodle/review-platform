@@ -1,11 +1,13 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"review-platform/internal/api"
 	"review-platform/internal/middleware"
 	"review-platform/internal/repository"
 	"review-platform/internal/service"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -45,8 +47,11 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		return nil, nil, err
 	}
 	voucherSvc.StartVoucherOrderConsumer()
+
 	rateLimiter := service.NewRateLimiter(app.RDB)
-	voucherHandler := api.NewVoucherHandler(voucherSvc, rateLimiter)
+
+	// 这里建议不要再把 rateLimiter 传给 VoucherHandler，避免重复限流
+	voucherHandler := api.NewVoucherHandler(voucherSvc)
 
 	userRepo := repository.NewUserRepository(app.DB)
 	authSvc := service.NewAuthService(
@@ -59,7 +64,20 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 
 	v1 := r.Group("/api/v1")
 	{
-		v1.POST("/auth/send-code", authHandler.SendCode)
+		// 登录验证码：按 IP 限流
+		sendCodeGroup := v1.Group("/auth")
+		sendCodeGroup.Use(middleware.RateLimit(
+			rateLimiter,
+			func(c *gin.Context) string {
+				return "send_code:" + c.ClientIP()
+			},
+			5,
+			time.Minute,
+		))
+		{
+			sendCodeGroup.POST("/send-code", authHandler.SendCode)
+		}
+
 		v1.POST("/auth/login", authHandler.Login)
 
 		v1.GET("/categories", categoryHandler.List)
@@ -69,15 +87,59 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
 		v1.POST("/shops/update", shopHandler.Update)
 
-		authGroup := v1.Group("")
-		authGroup.Use(middleware.Auth(app.Config))
+		// 发布点评：先鉴权，再按用户维度限流
+		reviewGroup := v1.Group("")
+		reviewGroup.Use(middleware.Auth(app.Config))
+		reviewGroup.Use(middleware.RateLimit(
+			rateLimiter,
+			func(c *gin.Context) string {
+				userIDVal, ok := c.Get(middleware.CurrentUserIDKey)
+				if !ok {
+					return "review:anonymous"
+				}
+				return "review:user:" + toString(userIDVal)
+			},
+			10,
+			time.Minute,
+		))
 		{
-			authGroup.POST("/reviews", reviewHandler.Create)
-			authGroup.POST("/vouchers/seckill/:id", voucherHandler.Seckill)
+			reviewGroup.POST("/reviews", reviewHandler.Create)
+		}
+
+		// 秒杀：先鉴权，再按用户维度限流
+		seckillGroup := v1.Group("")
+		seckillGroup.Use(middleware.Auth(app.Config))
+		seckillGroup.Use(middleware.RateLimit(
+			rateLimiter,
+			func(c *gin.Context) string {
+				userIDVal, ok := c.Get(middleware.CurrentUserIDKey)
+				if !ok {
+					return "seckill:anonymous"
+				}
+				return "seckill:user:" + toString(userIDVal)
+			},
+			5,
+			time.Second,
+		))
+		{
+			seckillGroup.POST("/vouchers/seckill/:id", voucherHandler.Seckill)
 		}
 	}
 
 	cleanup := func() {}
 
 	return r, cleanup, nil
+}
+
+func toString(v interface{}) string {
+	switch val := v.(type) {
+	case int64:
+		return fmt.Sprintf("%d", val)
+	case int:
+		return fmt.Sprintf("%d", val)
+	case string:
+		return val
+	default:
+		return "unknown"
+	}
 }

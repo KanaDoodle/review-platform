@@ -6,23 +6,16 @@ import (
 	"review-platform/internal/service"
 	"review-platform/pkg/response"
 	"strconv"
-	"context"
-	"fmt"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type VoucherHandler struct {
-	svc         *service.VoucherService
-	rateLimiter *service.RateLimiter
+	svc *service.VoucherService
 }
 
-func NewVoucherHandler(svc *service.VoucherService, limiter *service.RateLimiter) *VoucherHandler {
-	return &VoucherHandler{
-		svc:         svc,
-		rateLimiter: limiter,
-	}
+func NewVoucherHandler(svc *service.VoucherService) *VoucherHandler {
+	return &VoucherHandler{svc: svc}
 }
 
 func (h *VoucherHandler) Seckill(c *gin.Context) {
@@ -42,18 +35,6 @@ func (h *VoucherHandler) Seckill(c *gin.Context) {
 	userID, ok := userIDVal.(int64)
 	if !ok {
 		response.Error(c, 40101, "invalid user context")
-		return
-	}
-
-	ctx := context.Background()
-
-	allowed, err := h.rateLimiter.Allow(ctx, fmt.Sprintf("user:%d", userID), 5, time.Second)
-	if err != nil {
-		response.Error(c, 50001, "rate limiter error")
-		return
-	}
-	if !allowed {
-		response.Error(c, 42901, "too many requests")
 		return
 	}
 

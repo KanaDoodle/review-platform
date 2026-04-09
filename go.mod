@@ -1,6 +1,6 @@
 module review-platform
 
-go 1.25.5
+go 1.25.9
 
 require (
 	github.com/gin-gonic/gin v1.12.0
