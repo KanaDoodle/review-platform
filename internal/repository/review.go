@@ -26,3 +26,9 @@ func (r *ReviewRepository) ListByShopID(shopID int64) ([]model.Review, error) {
 func (r *ReviewRepository) Create(review *model.Review) error {
 	return r.db.Create(review).Error
 }
+
+func (r *ReviewRepository) ListAll() ([]model.Review, error) {
+	var reviews []model.Review
+	err := r.db.Order("id ASC").Find(&reviews).Error
+	return reviews, err
+}

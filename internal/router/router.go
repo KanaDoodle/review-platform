@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"review-platform/internal/api"
@@ -36,6 +37,12 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 	reviewRepo := repository.NewReviewRepository(app.DB)
 	reviewSvc := service.NewReviewService(reviewRepo, shopRepo)
 	reviewHandler := api.NewReviewHandler(reviewSvc)
+
+	aiSvc := service.NewAIService(app.Config.AI, reviewRepo)
+	if err := aiSvc.LoadReviewEmbeddings(context.Background()); err != nil {
+		return nil, nil, err
+	}
+	aiHandler := api.NewAIHandler(aiSvc)
 
 	voucherRepo := repository.NewVoucherRepository(app.DB)
 	voucherOrderRepo := repository.NewVoucherOrderRepository(app.DB)
@@ -85,6 +92,8 @@ func NewRouter(app *App) (*gin.Engine, func(), error) {
 		v1.GET("/shops/nearby", shopHandler.Nearby)
 		v1.GET("/shops/:id", shopHandler.GetByID)
 		v1.GET("/shops/:id/reviews", reviewHandler.ListByShopID)
+		v1.GET("/ai/reviews/search", aiHandler.SearchReviews)
+		v1.GET("/ai/shops/:id/summary", aiHandler.SummarizeShop)
 		v1.POST("/shops/update", shopHandler.Update)
 
 		// 发布点评：先鉴权，再按用户维度限流

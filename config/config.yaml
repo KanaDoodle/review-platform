@@ -13,3 +13,9 @@ redis:
 jwt:
   secret: "replace-with-your-secret"
   expire_hours: 72
+
+ai:
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: "sk-dac24af5a290487b9c17c143041a2c18"
+  embedding_model: "text-embedding-v3"
+  chat_model: "qwen-plus"
